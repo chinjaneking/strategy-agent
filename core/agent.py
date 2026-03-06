@@ -13,6 +13,7 @@ from openai import OpenAI
 from config.agent_config import get_config, AGENT_INFO
 from core.knowledge_base import get_system_prompt
 from core.analysis_templates import build_analysis_prompt
+from utils.file_utils import format_file_context
 
 
 class StrategyAgent:
@@ -125,7 +126,8 @@ class StrategyAgent:
         }
 
     def analyze(self, question: str, scene_type: Optional[str] = None,
-                use_history: bool = True, save_to_history: bool = True) -> Dict[str, Any]:
+                use_history: bool = True, save_to_history: bool = True,
+                file_context: Optional[str] = None) -> Dict[str, Any]:
         """
         执行谋略分析
 
@@ -134,6 +136,7 @@ class StrategyAgent:
             scene_type: 场景类型（通用决策/创业决策/职场决策/投资决策/婚恋决策/教育决策）
             use_history: 是否使用对话历史作为上下文
             save_to_history: 是否将本次对话保存到历史
+            file_context: 文件上下文内容（如上传的文件）
 
         Returns:
             分析结果字典，包含：
@@ -153,6 +156,10 @@ class StrategyAgent:
                 "tokens": None,
                 "history_summary": None,
             }
+
+        # 合并文件上下文到问题
+        if file_context:
+            question = f"{file_context}\n\n用户问题：{question}"
 
         # 构建消息列表
         messages = self._build_messages(question, scene_type, use_history)

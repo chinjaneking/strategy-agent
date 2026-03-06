@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from core.agent import StrategyAgent, AGENT_INFO
 from core.analysis_templates import get_all_scene_types, SCENE_SELECTION_GUIDE
-from utils.file_utils import save_analysis_result
+from utils.file_utils import save_analysis_result, read_uploaded_file, format_file_context
 
 
 # ============================================
@@ -80,6 +80,8 @@ def render_sidebar():
             "创业决策": "针对创业者，侧重市场验证、融资策略、增长路径",
             "职场决策": "针对职场人士，侧重职业发展与人际博弈",
             "投资决策": "针对投资理财，侧重风险收益与资金配置",
+            "婚恋决策": "针对恋爱婚姻，侧重双方匹配与长期关系",
+            "教育决策": "针对学业规划，侧重投资回报与职业发展",
         }
         st.info(scene_descriptions.get(scene, ""))
 
@@ -174,10 +176,52 @@ def render_chat():
                             st.error("保存失败")
 
 
+def render_file_uploader():
+    """渲染文件上传组件"""
+    st.markdown("### 📎 文件上传")
+
+    uploaded_file = st.file_uploader(
+        "上传文件进行分析（支持 .txt, .md, .pdf, .docx）",
+        type=['txt', 'md', 'pdf', 'docx'],
+        help="上传相关文档辅助决策分析，最大10MB",
+    )
+
+    if uploaded_file:
+        file_info = read_uploaded_file(uploaded_file)
+
+        if file_info["success"]:
+            st.success(f"✓ 已加载: {file_info['filename']} ({file_info['size']} bytes)")
+            st.session_state.uploaded_file_info = file_info
+        else:
+            st.error(f"✗ {file_info['error']}")
+            st.session_state.uploaded_file_info = None
+    else:
+        st.session_state.uploaded_file_info = None
+
+
 def handle_user_input():
     """处理用户输入"""
     if not st.session_state.agent_ready:
         return
+
+    # 文件上传区域
+    with st.expander("📎 文件上传（可选）"):
+        uploaded_file = st.file_uploader(
+            "上传相关文档辅助分析（.txt, .md, .pdf, .docx, .csv）",
+            type=['txt', 'md', 'pdf', 'docx', 'csv'],
+            key="file_uploader",
+        )
+
+        file_context = None
+        if uploaded_file:
+            with st.spinner("正在读取文件..."):
+                file_info = read_uploaded_file(uploaded_file)
+
+            if file_info["success"]:
+                st.success(f"✓ 已加载: {file_info['filename']} ({file_info['size']:,} bytes)")
+                file_context = format_file_context(file_info, max_length=8000)
+            else:
+                st.error(f"✗ 读取失败: {file_info['error']}")
 
     # 聊天输入
     prompt = st.chat_input("请描述你面临的决策问题...")
@@ -198,7 +242,8 @@ def handle_user_input():
             with st.spinner("正在运用鬼谷子、孙子兵法、毛泽东思想进行深度分析..."):
                 result = st.session_state.agent.analyze(
                     prompt,
-                    st.session_state.current_scene
+                    st.session_state.current_scene,
+                    file_context=file_context
                 )
 
             if result["success"]:
@@ -207,12 +252,16 @@ def handle_user_input():
 
                 # 显示元信息
                 with st.expander("📊 分析详情"):
-                    col1, col2 = st.columns(2)
+                    col1, col2, col3 = st.columns(3)
                     with col1:
                         st.markdown(f"**模型**: {result['model']}")
                     with col2:
                         tokens = result['tokens']
                         st.markdown(f"**Token**: 提示 {tokens['prompt']} / 输出 {tokens['completion']} / 总计 {tokens['total']}")
+                    with col3:
+                        if result.get("history_summary"):
+                            summary = result["history_summary"]
+                            st.markdown(f"**对话**: {summary['turn_count']}轮")
 
                 # 添加到历史
                 st.session_state.messages.append({
@@ -225,12 +274,14 @@ def handle_user_input():
                 })
 
                 # 保存按钮
-                if st.button("💾 保存分析结果"):
-                    filepath = save_analysis_result(result, prompt)
-                    if filepath:
-                        st.success(f"✓ 已保存到: {filepath}")
-                    else:
-                        st.error("✗ 保存失败")
+                col1, col2 = st.columns([1, 5])
+                with col1:
+                    if st.button("💾 保存分析结果", key=f"save_result_{len(st.session_state.messages)}"):
+                        filepath = save_analysis_result(result, prompt)
+                        if filepath:
+                            st.success(f"✓ 已保存: {os.path.basename(filepath)}")
+                        else:
+                            st.error("✗ 保存失败")
             else:
                 error_msg = f"**分析失败**: {result['error']}"
                 st.error(error_msg)
