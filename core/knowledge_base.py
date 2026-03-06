@@ -1,7 +1,36 @@
 """
 谋略知识库模块
 包含鬼谷子、孙子兵法、毛泽东思想的谋略体系
+
+支持独立知识库：如果安装了 strategy-knowledge-base 包，则使用独立知识库
+否则使用内嵌的知识库
 """
+
+import sys
+import os
+
+# 尝试导入独立知识库
+try:
+    # 首先尝试从独立包导入
+    from strategy_knowledge import KnowledgeManager
+    _USE_EXTERNAL_KB = True
+    _km = KnowledgeManager()
+except ImportError:
+    # 尝试从相对路径导入（如果是子模块模式）
+    parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    knowledge_base_path = os.path.join(parent_dir, 'strategy-knowledge-base')
+    if os.path.exists(knowledge_base_path):
+        sys.path.insert(0, knowledge_base_path)
+        try:
+            from strategy_knowledge import KnowledgeManager
+            _USE_EXTERNAL_KB = True
+            _km = KnowledgeManager()
+        except ImportError:
+            _USE_EXTERNAL_KB = False
+            _km = None
+    else:
+        _USE_EXTERNAL_KB = False
+        _km = None
 
 # ============================================
 # 谋略知识库
@@ -410,16 +439,22 @@ ERROR_CASES = {
 
 def get_knowledge_base() -> dict:
     """获取完整知识库"""
+    if _USE_EXTERNAL_KB and _km:
+        return _km.export_knowledge_base()
     return STRATEGY_KNOWLEDGE_BASE
 
 
 def get_system_prompt() -> str:
     """获取系统提示词"""
+    if _USE_EXTERNAL_KB and _km:
+        return _km.get_system_prompt()
     return SYSTEM_PROMPT
 
 
 def get_error_cases() -> dict:
     """获取错误案例库"""
+    if _USE_EXTERNAL_KB and _km:
+        return _km.get_error_cases()
     return ERROR_CASES
 
 
@@ -434,6 +469,8 @@ def get_tactic_detail(source: str, tactic_name: str) -> dict:
     Returns:
         谋略详细信息字典
     """
+    if _USE_EXTERNAL_KB and _km:
+        return _km.get_tactic(source, tactic_name)
     source_data = STRATEGY_KNOWLEDGE_BASE.get(source, {})
     tactics = source_data.get("core_tactics", {})
     return tactics.get(tactic_name, {})
@@ -441,11 +478,15 @@ def get_tactic_detail(source: str, tactic_name: str) -> dict:
 
 def get_thirtysix_stratagems() -> dict:
     """获取三十六计完整内容"""
+    if _USE_EXTERNAL_KB and _km:
+        return _km.get_thirtysix_stratagems()
     return STRATEGY_KNOWLEDGE_BASE.get("三十六计", {})
 
 
 def get_historical_cases() -> dict:
     """获取资治通鉴历史案例"""
+    if _USE_EXTERNAL_KB and _km:
+        return _km.get_historical_cases()
     return STRATEGY_KNOWLEDGE_BASE.get("资治通鉴", {})
 
 
@@ -459,6 +500,8 @@ def search_tactics(keyword: str) -> list:
     Returns:
         匹配的谋略列表，每项包含来源和详情
     """
+    if _USE_EXTERNAL_KB and _km:
+        return _km.search_tactics(keyword)
     results = []
     for source, data in STRATEGY_KNOWLEDGE_BASE.items():
         tactics = data.get("core_tactics", {})
@@ -470,3 +513,24 @@ def search_tactics(keyword: str) -> list:
                     "detail": detail,
                 })
     return results
+
+
+def reload_knowledge_base():
+    """重新加载知识库（支持热更新）"""
+    global _km
+    if _USE_EXTERNAL_KB and _km:
+        _km.reload()
+        return True
+    return False
+
+
+def is_using_external_kb() -> bool:
+    """检查是否正在使用独立知识库"""
+    return _USE_EXTERNAL_KB and _km is not None
+
+
+def get_kb_version() -> str:
+    """获取知识库版本"""
+    if _USE_EXTERNAL_KB and _km:
+        return _km.get_version()
+    return "2.0.0-embedded"
