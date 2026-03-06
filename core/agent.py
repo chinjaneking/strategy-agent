@@ -1,13 +1,14 @@
 """
 智能体核心模块
 实现谋策智能体的主要功能
+支持多轮对话上下文记忆
 """
 
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from openai import OpenAI
 from config.agent_config import get_config, AGENT_INFO
 from core.knowledge_base import get_system_prompt
@@ -19,19 +20,30 @@ class StrategyAgent:
     谋策智能体核心类
 
     基于中国传统谋略与毛泽东思想提供决策分析
+    支持多轮对话上下文记忆
     """
 
-    def __init__(self, provider: Optional[str] = None):
+    # 默认上下文窗口限制
+    DEFAULT_MAX_CONTEXT_TOKENS = 8000
+    # 保留的系统消息和最近对话的token预留
+    TOKEN_RESERVE = 4000
+
+    def __init__(self, provider: Optional[str] = None, max_context_tokens: int = None):
         """
         初始化智能体
 
         Args:
             provider: 模型提供商，可选 glm4/kimi/minimax，默认使用环境变量配置
+            max_context_tokens: 最大上下文token数，默认8000
         """
         self.provider = provider
         self.config = get_config(provider)
         self.client = None
         self._init_client()
+
+        # 对话历史存储
+        self.conversation_history: List[Dict[str, str]] = []
+        self.max_context_tokens = max_context_tokens or self.DEFAULT_MAX_CONTEXT_TOKENS
 
     def _init_client(self):
         """初始化OpenAI兼容客户端"""
@@ -44,13 +56,84 @@ class StrategyAgent:
         except Exception as e:
             raise RuntimeError(f"初始化API客户端失败: {str(e)}")
 
-    def analyze(self, question: str, scene_type: Optional[str] = None) -> Dict[str, Any]:
+    def _build_messages(self, question: str, scene_type: Optional[str] = None,
+                       use_history: bool = True) -> List[Dict[str, str]]:
+        """
+        构建完整的消息列表（包含上下文历史）
+
+        Args:
+            question: 当前用户问题
+            scene_type: 场景类型
+            use_history: 是否使用对话历史
+
+        Returns:
+            消息列表
+        """
+        system_prompt = get_system_prompt()
+        user_prompt = build_analysis_prompt(question, scene_type or "通用决策")
+
+        messages = [{"role": "system", "content": system_prompt}]
+
+        # 添加历史对话（如果启用）
+        if use_history and self.conversation_history:
+            messages.extend(self.conversation_history)
+
+        # 添加当前用户消息
+        messages.append({"role": "user", "content": user_prompt})
+
+        return messages
+
+    def _manage_context_window(self):
+        """
+        管理上下文窗口，防止超出token限制
+        策略：保留最近的对话，移除较早的
+        """
+        # 简单的启发式策略：限制历史消息对数（每对约500-1000 tokens）
+        max_history_pairs = 6  # 最多保留6轮对话（12条消息）
+
+        # 计算当前历史消息数（排除系统消息的后续消息）
+        history_count = len(self.conversation_history)
+
+        if history_count > max_history_pairs * 2:
+            # 移除最早的消息对，保留最近的
+            excess = history_count - max_history_pairs * 2
+            self.conversation_history = self.conversation_history[excess:]
+
+    def clear_history(self):
+        """清除对话历史"""
+        self.conversation_history = []
+
+    def get_history_summary(self) -> Dict[str, Any]:
+        """
+        获取对话历史摘要
+
+        Returns:
+            包含轮数、token估算等信息的字典
+        """
+        message_count = len(self.conversation_history)
+        turn_count = message_count // 2  # 每轮包含用户+助手两条消息
+
+        # 粗略估算token数（中文约1.5字符/token）
+        total_chars = sum(len(m.get("content", "")) for m in self.conversation_history)
+        estimated_tokens = int(total_chars / 1.5)
+
+        return {
+            "turn_count": turn_count,
+            "message_count": message_count,
+            "estimated_tokens": estimated_tokens,
+            "max_tokens": self.max_context_tokens,
+        }
+
+    def analyze(self, question: str, scene_type: Optional[str] = None,
+                use_history: bool = True, save_to_history: bool = True) -> Dict[str, Any]:
         """
         执行谋略分析
 
         Args:
             question: 用户决策问题
-            scene_type: 场景类型（通用决策/创业决策/职场决策/投资决策）
+            scene_type: 场景类型（通用决策/创业决策/职场决策/投资决策/婚恋决策/教育决策）
+            use_history: 是否使用对话历史作为上下文
+            save_to_history: 是否将本次对话保存到历史
 
         Returns:
             分析结果字典，包含：
@@ -59,6 +142,7 @@ class StrategyAgent:
             - error: 错误信息（失败时）
             - model: 使用的模型
             - tokens: token消耗信息
+            - history_summary: 对话历史摘要（save_to_history为True时）
         """
         if not question or not question.strip():
             return {
@@ -67,20 +151,17 @@ class StrategyAgent:
                 "content": None,
                 "model": None,
                 "tokens": None,
+                "history_summary": None,
             }
 
-        # 构建完整提示词
-        system_prompt = get_system_prompt()
-        user_prompt = build_analysis_prompt(question, scene_type or "通用决策")
+        # 构建消息列表
+        messages = self._build_messages(question, scene_type, use_history)
 
         try:
             # 调用API
             response = self.client.chat.completions.create(
                 model=self.config["model"],
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
+                messages=messages,
                 temperature=self.config["temperature"],
             )
 
@@ -88,7 +169,14 @@ class StrategyAgent:
             content = response.choices[0].message.content
             usage = response.usage
 
-            return {
+            # 保存到对话历史（如果启用）
+            if save_to_history:
+                user_prompt = build_analysis_prompt(question, scene_type or "通用决策")
+                self.conversation_history.append({"role": "user", "content": user_prompt})
+                self.conversation_history.append({"role": "assistant", "content": content})
+                self._manage_context_window()
+
+            result = {
                 "success": True,
                 "content": content,
                 "error": None,
@@ -98,7 +186,10 @@ class StrategyAgent:
                     "completion": usage.completion_tokens,
                     "total": usage.total_tokens,
                 },
+                "history_summary": self.get_history_summary() if save_to_history else None,
             }
+
+            return result
 
         except Exception as e:
             return {
@@ -107,20 +198,23 @@ class StrategyAgent:
                 "content": None,
                 "model": self.config["model"],
                 "tokens": None,
+                "history_summary": None,
             }
 
-    def quick_analyze(self, question: str, scene_type: Optional[str] = None) -> str:
+    def quick_analyze(self, question: str, scene_type: Optional[str] = None,
+                     use_history: bool = True) -> str:
         """
         快速分析，直接返回结果字符串
 
         Args:
             question: 用户决策问题
             scene_type: 场景类型
+            use_history: 是否使用对话历史
 
         Returns:
             分析结果字符串或错误信息
         """
-        result = self.analyze(question, scene_type)
+        result = self.analyze(question, scene_type, use_history=use_history)
         if result["success"]:
             return result["content"]
         else:
@@ -154,7 +248,7 @@ def create_agent(provider: Optional[str] = None) -> StrategyAgent:
 
 def quick_analyze(question: str, scene_type: Optional[str] = None, provider: Optional[str] = None) -> str:
     """
-    快速分析的便捷函数
+    快速分析的便捷函数（无上下文记忆）
 
     Args:
         question: 用户决策问题
@@ -165,7 +259,7 @@ def quick_analyze(question: str, scene_type: Optional[str] = None, provider: Opt
         分析结果字符串
     """
     agent = create_agent(provider)
-    return agent.quick_analyze(question, scene_type)
+    return agent.quick_analyze(question, scene_type, use_history=False)
 
 
 # ============================================
@@ -196,6 +290,9 @@ if __name__ == "__main__":
             print("分析成功！")
             print(f"模型: {result['model']}")
             print(f"Token消耗: {result['tokens']['total']} (提示: {result['tokens']['prompt']}, 输出: {result['tokens']['completion']})")
+            if result.get("history_summary"):
+                summary = result["history_summary"]
+                print(f"对话历史: {summary['turn_count']}轮 ({summary['estimated_tokens']} tokens)")
             print("\n分析结果预览:")
             print(result["content"][:500] + "...")
         else:
