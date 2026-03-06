@@ -39,9 +39,9 @@ AGENT_CONFIG = {
 
 # 智能体信息
 AGENT_INFO = {
-    "name": "谋策智能体 Strategy Agent V2.0",
+    "name": "谋策智能体 Strategy Agent V2.2",
     "description": "基于中国传统谋略（鬼谷子、孙子兵法）与毛泽东思想的高级决策分析AI智能体",
-    "version": "2.0.0",
+    "version": "2.2.0",
     "author": "谋策团队",
 }
 

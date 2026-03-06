@@ -1,7 +1,8 @@
 """
-智能体核心模块
+智能体核心模块 (V2.2)
 实现谋策智能体的主要功能
 支持多轮对话上下文记忆
+集成质量检查、日志系统、统一错误处理
 """
 
 import sys
@@ -15,6 +16,9 @@ from core.knowledge_base import get_system_prompt
 from core.analysis_templates import build_analysis_prompt
 from utils.file_utils import format_file_context
 from core.dynamic_knowledge import DynamicKnowledgeBase
+from core.quality_checker import QualityChecker
+from utils.logger import get_logger
+from utils.error_handler import handle_api_error, StrategyAgentException
 
 
 class StrategyAgent:
@@ -49,6 +53,11 @@ class StrategyAgent:
         
         # 独立智慧库
         self.knowledge_base = DynamicKnowledgeBase()
+
+        # V2.2 新增：质量检查器和日志
+        self.quality_checker = QualityChecker()
+        self.logger = get_logger()
+        self.enable_quality_check = True
 
     def _init_client(self):
         """初始化OpenAI兼容客户端"""
@@ -192,29 +201,62 @@ class StrategyAgent:
                 self.conversation_history.append({"role": "assistant", "content": content})
                 self._manage_context_window()
 
+            tokens_info = {
+                "prompt": usage.prompt_tokens,
+                "completion": usage.completion_tokens,
+                "total": usage.total_tokens,
+            }
+
+            # V2.2: 质量检查
+            quality_report = None
+            if self.enable_quality_check:
+                quality_report = self.quality_checker.check_all(content)
+                self.logger.log_quality_check(
+                    quality_report["score"], quality_report["grade"],
+                    quality_report["passed"], quality_report["total"]
+                )
+
+            # V2.2: 日志记录
+            self.logger.log_analysis(
+                question=question[:100],
+                scene_type=scene_type or "通用决策",
+                tokens=tokens_info,
+            )
+
             result = {
                 "success": True,
                 "content": content,
                 "error": None,
                 "model": self.config["model"],
-                "tokens": {
-                    "prompt": usage.prompt_tokens,
-                    "completion": usage.completion_tokens,
-                    "total": usage.total_tokens,
-                },
+                "tokens": tokens_info,
                 "history_summary": self.get_history_summary() if save_to_history else None,
+                "quality_report": quality_report,
             }
 
             return result
 
-        except Exception as e:
+        except StrategyAgentException as e:
+            self.logger.log_error(str(e), context="analyze")
             return {
                 "success": False,
-                "error": f"API调用失败: {str(e)}",
+                "error": e.message,
                 "content": None,
                 "model": self.config["model"],
                 "tokens": None,
                 "history_summary": None,
+                "quality_report": None,
+            }
+        except Exception as e:
+            agent_error = handle_api_error(e)
+            self.logger.log_error(str(e), context="analyze")
+            return {
+                "success": False,
+                "error": agent_error.message,
+                "content": None,
+                "model": self.config["model"],
+                "tokens": None,
+                "history_summary": None,
+                "quality_report": None,
             }
 
     def quick_analyze(self, question: str, scene_type: Optional[str] = None,
