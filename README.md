@@ -1,11 +1,11 @@
-# 🎯 谋策智能体 Strategy Agent V2.0
+# 🎯 谋策智能体 Strategy Agent V2.1
 
 > 基于中国传统谋略（鬼谷子、孙子兵法、三十六计、资治通鉴）与毛泽东思想的高级决策分析 AI 智能体
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.9+-blue.svg" alt="Python 3.9+">
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT">
-  <img src="https://img.shields.io/badge/Version-2.0.0-orange.svg" alt="Version 2.0.0">
+  <img src="https://img.shields.io/badge/Version-2.1.0-orange.svg" alt="Version 2.1.0">
 </p>
 
 ## 📖 项目简介
@@ -22,6 +22,39 @@
 - 🤖 **多模型兼容**：支持 GLM-4 / Kimi / MiniMax 等国产大模型
 - 🖥️ **双界面支持**：Web 可视化界面 + 命令行交互
 - 💾 **结果导出**：自动生成 Markdown 格式分析报告
+- 🧠 **独立动态智慧库**：基于真实案例复盘学习，持续进化决策能力（V2.1 新增）
+
+## 🆕 V2.1 进化版新特性
+
+### 独立动态智慧库
+
+V2.1 引入了**动态智慧库 (Dynamic Knowledge Base)**，赋予智能体从真实案例中学习的能力：
+
+- **持久化存储**：本地 `data/wisdom_library.json` 存储实战经验
+- **自动检索**：处理新决策问题时，自动检索相关历史教训作为前置启示
+- **持续进化**：智慧库随使用不断增加，智能体决策能力越来越"老辣"
+
+### 实战案例复盘机制
+
+新增 `learn_from_feedback` 接口，支持"战后复盘"：
+
+1. 输入原始决策问题
+2. 输入实际采取的行动
+3. 输入真实世界的反馈结果
+4. 大模型自动提炼 1-2 条核心实战智慧规则
+5. 永久存入智慧库供后续调用
+
+### 管理员复盘终端
+
+纯命令行后台工具 `admin_feedback_cli.py`，专供管理员使用：
+
+```bash
+python admin_feedback_cli.py
+```
+
+交互式录入案例，一键驱动智能体完成深度复盘。
+
+---
 
 ## 🚀 快速开始
 
@@ -89,6 +122,14 @@ streamlit run main_web.py
 
 ```bash
 python main_cli.py
+```
+
+**管理员复盘终端（V2.1 新增）：**
+
+用于录入实战反馈，驱动智能体持续学习进化：
+
+```bash
+python admin_feedback_cli.py
 ```
 
 ## 📚 功能详解
@@ -183,12 +224,16 @@ strategy_agent/
 │   └── agent_config.py      # 智能体配置（多模型支持）
 ├── core/
 │   ├── agent.py             # StrategyAgent 核心类
-│   ├── knowledge_base.py    # 谋略知识库
+│   ├── knowledge_base.py    # 谋略知识库（静态经典理论）
+│   ├── dynamic_knowledge.py # 动态智慧库（实战经验学习）
 │   └── analysis_templates.py # 场景分析模板
 ├── utils/
 │   └── file_utils.py        # 文件工具（保存/读取）
+├── data/
+│   └── wisdom_library.json  # 实战智慧库存储
 ├── main_web.py              # Streamlit Web 界面
 ├── main_cli.py              # 命令行界面
+├── admin_feedback_cli.py    # 管理员复盘终端
 ├── requirements.txt         # 依赖清单
 └── .env                     # 环境变量配置
 ```
@@ -260,10 +305,12 @@ DEFAULT_MODEL_PROVIDER=minimax
 ### 待办事项
 
 - [x] 补充《资治通鉴》《三十六计》案例库
-- [ ] 增加语音输入/输出支持
 - [x] 添加更多场景模板（婚恋决策、教育决策等）
 - [x] 支持文件上传联合分析（Kimi 长文本）
 - [x] 多轮对话上下文记忆
+- [x] **V2.1** 独立动态智慧库 + 实战案例复盘学习机制
+- [ ] 增加语音输入/输出支持
+- [ ] 向量检索增强智慧库相关性匹配
 
 ## 📝 许可证
 

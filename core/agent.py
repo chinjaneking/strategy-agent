@@ -14,6 +14,7 @@ from config.agent_config import get_config, AGENT_INFO
 from core.knowledge_base import get_system_prompt
 from core.analysis_templates import build_analysis_prompt
 from utils.file_utils import format_file_context
+from core.dynamic_knowledge import DynamicKnowledgeBase
 
 
 class StrategyAgent:
@@ -45,6 +46,9 @@ class StrategyAgent:
         # 对话历史存储
         self.conversation_history: List[Dict[str, str]] = []
         self.max_context_tokens = max_context_tokens or self.DEFAULT_MAX_CONTEXT_TOKENS
+        
+        # 独立智慧库
+        self.knowledge_base = DynamicKnowledgeBase()
 
     def _init_client(self):
         """初始化OpenAI兼容客户端"""
@@ -72,6 +76,11 @@ class StrategyAgent:
         """
         system_prompt = get_system_prompt()
         user_prompt = build_analysis_prompt(question, scene_type or "通用决策")
+
+        # 动态获取历史复盘智慧，增强当前推演能力
+        dynamic_wisdom = self.knowledge_base.get_relevant_wisdom(question)
+        if dynamic_wisdom:
+            user_prompt = f"{dynamic_wisdom}\n\n当前面临的新决策问题：\n{user_prompt}"
 
         messages = [{"role": "system", "content": system_prompt}]
 
@@ -234,6 +243,66 @@ class StrategyAgent:
             "current_provider": self.provider or "default",
             "current_model": self.config["model"],
         }
+        
+    def learn_from_feedback(self, original_question: str, action_taken: str, final_result: str) -> Dict[str, Any]:
+        """
+        基于真实复盘结果进行动态学习，提炼经验储存于独立智慧库
+        
+        Args:
+            original_question: 原核心决策问题
+            action_taken: 实际采取的行动策略
+            final_result: 现实世界中的反馈与最终结果（成功/失败及原因）
+            
+        Returns:
+            Dict: 包含学习状态及提炼智慧的结果
+        """
+        feedback_prompt = f"""
+请你作为高级战略复盘专家，对以下真实决策案例进行深度复盘：
+
+【原决策问题】：{original_question}
+【实际采取的行动】：{action_taken}
+【现实世界反馈结果】：{final_result}
+
+请结合鬼谷子、孙子兵法或毛泽东思想，分析为何会产生这样的结果，并提炼出 1到2 条核心“实战智慧教训”。
+要求：
+1. 语言高度凝练，直击要害。
+2. 以“【实战规则】XXX：因为YYY，以后遇到ZZZ情况，应当WWW。”的结构输出。
+3. 必须对未来的类似问题有明确的指导意义，切忌正确的废话。
+        """
+
+        messages = [
+            {"role": "system", "content": "你是冷酷、理性的战略复盘讲师，只提取最核心的战术规律。"},
+            {"role": "user", "content": feedback_prompt}
+        ]
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.config["model"],
+                messages=messages,
+                temperature=0.3, # 复盘总结需要客观稳定
+            )
+            extracted_wisdom = response.choices[0].message.content.strip()
+
+            # 将提炼的智慧存入独立智慧库
+            wisdom_id = self.knowledge_base.add_wisdom(
+                original_question=original_question,
+                action_taken=action_taken,
+                final_result=final_result,
+                extracted_wisdom=extracted_wisdom,
+                tags=["复盘总结"]
+            )
+
+            return {
+                "success": True,
+                "wisdom_id": wisdom_id,
+                "extracted_wisdom": extracted_wisdom
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"复盘学习失败: {str(e)}",
+                "extracted_wisdom": ""
+            }
 
 
 # ============================================
