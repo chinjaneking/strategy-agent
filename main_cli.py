@@ -196,7 +196,7 @@ def main():
     except Exception as e:
         print(f"✗ 初始化失败: {str(e)}")
         print("\n请检查:")
-        print("1. 是否已创建 .env 文件并配置 API Key")
+        print("1. 是否已创建 .env.local（推荐）或 .env，并配置 API Key")
         print("2. 是否已安装依赖: pip install -r requirements.txt")
         input("\n按 Enter 退出...")
         return

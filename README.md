@@ -92,13 +92,7 @@ pip install -r requirements.txt
 
 ### 配置 API Key
 
-复制环境变量模板并填写你的 API Key：
-
-```bash
-cp .env .env.local
-```
-
-编辑 `.env.local` 文件：
+手动创建 `.env.local`（推荐）或 `.env`（兼容）并填写你的 API Key：
 
 ```ini
 # 智谱 GLM-4（推荐）
@@ -119,6 +113,8 @@ MINIMAX_MODEL=abab6.5-chat
 # 默认使用的模型
 DEFAULT_MODEL_PROVIDER=glm4
 ```
+
+如果 `.env` 和 `.env.local` 同时存在，运行时会优先使用 `.env.local` 中的值。
 
 ### 启动使用
 
@@ -247,7 +243,8 @@ strategy_agent/
 ├── main_cli.py              # 命令行界面
 ├── admin_feedback_cli.py    # 管理员复盘终端
 ├── requirements.txt         # 依赖清单
-└── .env                     # 环境变量配置
+├── .env                     # 环境变量配置（兼容）
+└── .env.local               # 环境变量配置（推荐）
 ```
 
 ### 依赖说明
