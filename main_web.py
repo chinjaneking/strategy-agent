@@ -54,6 +54,26 @@ def init_session_state():
 # UI组件
 # ============================================
 
+def clear_conversation_state(session_state):
+    """Reset UI and agent conversation state together."""
+    session_state.messages = []
+
+    for key in ("pending_prompt", "example_input", "uploaded_file_info"):
+        if key in session_state:
+            del session_state[key]
+
+    agent = session_state.get("agent")
+    if agent and hasattr(agent, "clear_history"):
+        agent.clear_history()
+
+
+def consume_pending_prompt(session_state, chat_prompt):
+    """Consume queued quick-start prompts before chat input."""
+    if "pending_prompt" in session_state:
+        return session_state.pop("pending_prompt")
+    return chat_prompt
+
+
 def render_sidebar():
     """渲染侧边栏"""
     with st.sidebar:
@@ -121,7 +141,7 @@ def render_sidebar():
 
         # 清除对话按钮
         if st.button("🗑️ 清除对话", use_container_width=True):
-            st.session_state.messages = []
+            clear_conversation_state(st.session_state)
             st.rerun()
 
 
@@ -136,7 +156,7 @@ def render_header():
         ⚠️ **智能体初始化失败**
 
         请检查以下配置：
-        1. 在项目根目录创建 `.env` 文件
+        1. 在项目根目录创建 `.env.local`（推荐）或 `.env`
         2. 添加 API Key 配置，例如：
            ```
            GLM4_API_KEY=your_api_key_here
@@ -224,7 +244,8 @@ def handle_user_input():
                 st.error(f"✗ 读取失败: {file_info['error']}")
 
     # 聊天输入
-    prompt = st.chat_input("请描述你面临的决策问题...")
+    chat_prompt = st.chat_input("请描述你面临的决策问题...")
+    prompt = consume_pending_prompt(st.session_state, chat_prompt)
 
     if prompt:
         # 添加用户消息
@@ -309,7 +330,7 @@ def render_quick_start():
             > 面临两个offer选择，一个是稳定的大厂，一个是高风险的创业公司，该如何决策？
             """)
             if st.button("使用此示例", key="example1"):
-                st.session_state.example_input = "面临两个offer选择，一个是稳定的大厂，一个是高风险的创业公司，该如何决策？"
+                st.session_state.pending_prompt = "面临两个offer选择，一个是稳定的大厂，一个是高风险的创业公司，该如何决策？"
                 st.rerun()
 
         with col2:
@@ -318,7 +339,7 @@ def render_quick_start():
             > 竞品突然发起价格战，我方资金有限，该如何应对？
             """)
             if st.button("使用此示例", key="example2"):
-                st.session_state.example_input = "竞品突然发起价格战，我方资金有限，该如何应对？"
+                st.session_state.pending_prompt = "竞品突然发起价格战，我方资金有限，该如何应对？"
                 st.rerun()
 
         with col3:
@@ -327,20 +348,8 @@ def render_quick_start():
             > 手上有50万现金，当前股市低迷，是否适合入场？
             """)
             if st.button("使用此示例", key="example3"):
-                st.session_state.example_input = "手上有50万现金，当前股市低迷，是否适合入场？"
+                st.session_state.pending_prompt = "手上有50万现金，当前股市低迷，是否适合入场？"
                 st.rerun()
-
-        # 如果有示例输入，填充到聊天框（通过session_state传递到handle_user_input）
-        if "example_input" in st.session_state:
-            prompt = st.session_state.example_input
-            del st.session_state.example_input
-
-            # 直接处理示例输入
-            st.session_state.messages.append({
-                "role": "user",
-                "content": prompt,
-            })
-            st.rerun()
 
 
 # ============================================

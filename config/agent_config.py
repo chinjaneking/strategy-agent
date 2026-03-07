@@ -4,38 +4,58 @@
 """
 
 import os
+from pathlib import Path
+
 from dotenv import load_dotenv
 
-# 加载环境变量
-load_dotenv()
 
-# 获取默认模型提供商
-DEFAULT_PROVIDER = os.getenv("DEFAULT_MODEL_PROVIDER", "glm4")
+def _get_env_dir() -> Path:
+    override_dir = os.getenv("STRATEGY_AGENT_ENV_DIR")
+    if override_dir:
+        return Path(override_dir)
+    return Path(__file__).resolve().parent.parent
 
-# 智能体配置字典
-AGENT_CONFIG = {
-    "glm4": {
-        "api_key": os.getenv("GLM4_API_KEY"),
-        "base_url": os.getenv("GLM4_BASE_URL", "https://open.bigmodel.cn/api/paas/v4/"),
-        "model": os.getenv("GLM4_MODEL", "glm-4"),
-        "temperature": 0.2,
-        "timeout": 120,
-    },
-    "kimi": {
-        "api_key": os.getenv("KIMI_API_KEY"),
-        "base_url": os.getenv("KIMI_BASE_URL", "https://api.moonshot.cn/v1"),
-        "model": os.getenv("KIMI_MODEL", "moonshot-v1-8k"),
-        "temperature": 0.2,
-        "timeout": 120,
-    },
-    "minimax": {
-        "api_key": os.getenv("MINIMAX_API_KEY"),
-        "base_url": os.getenv("MINIMAX_BASE_URL", "https://api.minimax.chat/v1"),
-        "model": os.getenv("MINIMAX_MODEL", "abab6.5-chat"),
-        "temperature": 0.2,
-        "timeout": 120,
-    },
-}
+
+def _load_environment():
+    env_dir = _get_env_dir()
+    load_dotenv(env_dir / ".env")
+    load_dotenv(env_dir / ".env.local", override=True)
+
+
+def _build_agent_config() -> dict:
+    return {
+        "glm4": {
+            "api_key": os.getenv("GLM4_API_KEY"),
+            "base_url": os.getenv("GLM4_BASE_URL", "https://open.bigmodel.cn/api/paas/v4/"),
+            "model": os.getenv("GLM4_MODEL", "glm-4"),
+            "temperature": 0.2,
+            "timeout": 120,
+        },
+        "kimi": {
+            "api_key": os.getenv("KIMI_API_KEY"),
+            "base_url": os.getenv("KIMI_BASE_URL", "https://api.moonshot.cn/v1"),
+            "model": os.getenv("KIMI_MODEL", "moonshot-v1-8k"),
+            "temperature": 0.2,
+            "timeout": 120,
+        },
+        "minimax": {
+            "api_key": os.getenv("MINIMAX_API_KEY"),
+            "base_url": os.getenv("MINIMAX_BASE_URL", "https://api.minimax.chat/v1"),
+            "model": os.getenv("MINIMAX_MODEL", "abab6.5-chat"),
+            "temperature": 0.2,
+            "timeout": 120,
+        },
+    }
+
+
+def _refresh_runtime_config():
+    global DEFAULT_PROVIDER, AGENT_CONFIG
+    _load_environment()
+    DEFAULT_PROVIDER = os.getenv("DEFAULT_MODEL_PROVIDER", "glm4")
+    AGENT_CONFIG = _build_agent_config()
+
+
+_refresh_runtime_config()
 
 # 智能体信息
 AGENT_INFO = {
@@ -56,6 +76,7 @@ def get_config(provider: str = None) -> dict:
     Returns:
         配置字典
     """
+    _refresh_runtime_config()
     provider = provider or DEFAULT_PROVIDER
     if provider not in AGENT_CONFIG:
         raise ValueError(f"不支持的模型提供商: {provider}，可选: {list(AGENT_CONFIG.keys())}")
@@ -71,4 +92,5 @@ def get_config(provider: str = None) -> dict:
 
 def get_available_providers() -> list:
     """获取所有可用的模型提供商列表"""
+    _refresh_runtime_config()
     return list(AGENT_CONFIG.keys())
